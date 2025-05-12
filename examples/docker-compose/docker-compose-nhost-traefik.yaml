@@ -1,111 +1,101 @@
-
-version: "3.8"
-
+version: '3.8'
 services:
   traefik:
-    image: traefik:v3.0
+    image: 'traefik:v3.0'
     container_name: traefik
     command:
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --api.dashboard=true
-      - --log.level=INFO
+      - '--entrypoints.web.address=:8888'
+      - '--entrypoints.websecure.address=:8444'
+      - '--providers.docker=true'
+      - '--providers.docker.exposedbydefault=false'
+      - '--api.dashboard=true'
+      - '--log.level=INFO'
     ports:
-      - "8000:80"
-      - "8443:443"
+      - '8888:8888'
+      - '8444:8444'
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - '/var/run/docker.sock:/var/run/docker.sock'
     networks:
       - traefik-public
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
-      - "traefik.http.routers.traefik.service=api@internal"
-      - "traefik.http.routers.traefik.entrypoints=web"
-
+      - traefik.enable=true
+      - traefik.http.routers.traefik.rule=Host(`traefik.localhost`)
+      - traefik.http.routers.traefik.service=api@internal
+      - traefik.http.routers.traefik.entrypoints=web
   nhost-auth:
-    image: nhost/auth:0.24.4
+    image: 'nhost/hasura-auth:0.37.1'
     container_name: nhost-auth
     depends_on:
       - postgres
     environment:
       - AUTH_ACCESS_TOKEN_SECRET=your-secret
       - AUTH_REFRESH_TOKEN_SECRET=your-refresh-secret
-      - HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres
+      - 'HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres'
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.auth.rule=Host(`nhost-auth.localhost`)"
-      - "traefik.http.routers.auth.entrypoints=web"
-      - "traefik.http.services.auth.loadbalancer.server.port=4000"
+      - traefik.enable=true
+      - traefik.http.routers.auth.rule=Host(`nhost-auth.localhost`)
+      - traefik.http.routers.auth.entrypoints=web
+      - traefik.http.services.auth.loadbalancer.server.port=4000
     networks:
       - traefik-public
-
   nhost-console:
-    image: nhost/console:0.24.4
+    image: 'nhost/graphql-engine:v2.36.9-ce.cli-migrations-v3'
     container_name: nhost-console
     environment:
-      - HASURA_API_URL=http://nhost-graphql:8080
+      - 'HASURA_API_URL=http://nhost-graphql:8080'
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.console.rule=Host(`nhost-console.localhost`)"
-      - "traefik.http.routers.console.entrypoints=web"
-      - "traefik.http.services.console.loadbalancer.server.port=3000"
+      - traefik.enable=true
+      - traefik.http.routers.console.rule=Host(`nhost-console.localhost`)
+      - traefik.http.routers.console.entrypoints=web
+      - traefik.http.services.console.loadbalancer.server.port=3000
     networks:
       - traefik-public
-
   nhost-dashboard:
-    image: nhost/dashboard:0.24.4
+    image: 'nhost/dashboard:2.20.0'
     container_name: nhost-dashboard
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.dashboard.rule=Host(`nhost-dashboard.localhost`)"
-      - "traefik.http.routers.dashboard.entrypoints=web"
-      - "traefik.http.services.dashboard.loadbalancer.server.port=3000"
+      - traefik.enable=true
+      - traefik.http.routers.dashboard.rule=Host(`nhost-dashboard.localhost`)
+      - traefik.http.routers.dashboard.entrypoints=web
+      - traefik.http.services.dashboard.loadbalancer.server.port=3000
     networks:
       - traefik-public
-
   nhost-functions:
-    image: nhost/functions:0.24.4
+    image: 'nhost/functions:22-1.4.0'
     container_name: nhost-functions
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.functions.rule=Host(`nhost-functions.localhost`)"
-      - "traefik.http.routers.functions.entrypoints=web"
-      - "traefik.http.services.functions.loadbalancer.server.port=3000"
+      - traefik.enable=true
+      - traefik.http.routers.functions.rule=Host(`nhost-functions.localhost`)
+      - traefik.http.routers.functions.entrypoints=web
+      - traefik.http.services.functions.loadbalancer.server.port=3000
     networks:
       - traefik-public
-
   nhost-graphql:
-    image: hasura/graphql-engine:v2.37.1
+    image: 'nhost/graphql-engine:v2.36.9-ce'
     container_name: nhost-graphql
     environment:
-      - HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres
+      - 'HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres'
       - HASURA_GRAPHQL_ENABLE_CONSOLE=true
       - HASURA_GRAPHQL_DEV_MODE=true
       - HASURA_GRAPHQL_ADMIN_SECRET=nhostadminsecret
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.graphql.rule=Host(`nhost-graphql.localhost`)"
-      - "traefik.http.routers.graphql.entrypoints=web"
-      - "traefik.http.services.graphql.loadbalancer.server.port=8080"
+      - traefik.enable=true
+      - traefik.http.routers.graphql.rule=Host(`nhost-graphql.localhost`)
+      - traefik.http.routers.graphql.entrypoints=web
+      - traefik.http.services.graphql.loadbalancer.server.port=8080
     networks:
       - traefik-public
-
   postgres:
-    image: postgres:15
+    image: 'postgres:15'
     container_name: nhost-postgres
     environment:
       - POSTGRES_PASSWORD=postgres
     volumes:
-      - nhost_db:/var/lib/postgresql/data
+      - 'nhost_db:/var/lib/postgresql/data'
     networks:
       - traefik-public
-
 volumes:
-  nhost_db:
-
+  nhost_db: null
 networks:
   traefik-public:
     external: true
