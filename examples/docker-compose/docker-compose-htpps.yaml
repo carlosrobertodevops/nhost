@@ -1,0 +1,124 @@
+version: '3.6'
+
+services:
+
+  traefik:
+    image: traefik:v2.10
+    command:
+      - --api.insecure=false
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.devresolver.acme.tlschallenge=true
+      - --certificatesresolvers.devresolver.acme.email=admin@example.com
+      - --certificatesresolvers.devresolver.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    networks:
+      - nhost
+
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - nhost
+    labels:
+      - "traefik.enable=false"
+
+  hasura:
+    image: hasura/graphql-engine:v2.36.0
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
+    networks:
+      - nhost
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hasura.rule=Host(`graphql.localhost`)
+      - "traefik.http.routers.hasura.entrypoints=websecure"
+      - "traefik.http.routers.hasura.tls.certresolver=devresolver"
+
+  auth:
+    image: nhost/auth:0.21.0
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+    networks:
+      - nhost
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth.rule=Host(`auth.localhost`)"
+      - "traefik.http.routers.auth.entrypoints=websecure"
+      - "traefik.http.routers.auth.tls.certresolver=devresolver"
+
+  functions:
+    image: nhost/functions:0.4.1
+    restart: always
+    depends_on:
+      - hasura
+    environment:
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+    networks:
+      - nhost
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.functions.rule=Host(`functions.localhost`)"
+      - "traefik.http.routers.functions.entrypoints=websecure"
+      - "traefik.http.routers.functions.tls.certresolver=devresolver"
+
+  console:
+    image: nhost/console:0.9.0
+    restart: always
+    networks:
+      - nhost
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.console.rule=Host(`console.localhost`)"
+      - "traefik.http.routers.console.entrypoints=websecure"
+      - "traefik.http.routers.console.tls.certresolver=devresolver"
+
+  dashboard:
+    image: nhost/dashboard:0.7.0
+    restart: always
+    networks:
+      - nhost
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`dashboard.localhost`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=devresolver"
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    restart: always
+    networks:
+      - nhost
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mailhog.rule=Host(`mailhog.localhost`)"
+      - "traefik.http.routers.mailhog.entrypoints=websecure"
+      - "traefik.http.routers.mailhog.tls.certresolver=devresolver"
+
+networks:
+  nhost:
+    driver: bridge
