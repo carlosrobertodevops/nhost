@@ -1,0 +1,124 @@
+version: '3.6'
+
+services:
+  traefik:
+    image: traefik:v3.0
+    restart: always
+    command:
+      - --api.dashboard=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - nhost
+
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - nhost
+
+  mailhog:
+    image: mailhog/mailhog
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mailhog.rule=Host(`mailhog.localhost`)"
+      - "traefik.http.services.mailhog.loadbalancer.server.port=8025"
+    networks:
+      - nhost
+
+  auth:
+    image: nhost/auth:latest
+    restart: always
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      AUTH_CLIENT_URL: http://auth.localhost
+      AUTH_URL: http://auth.localhost
+      HASURA_URL: http://graphql.localhost/v1/graphql
+      MAILER_URL: smtp://mailhog:1025
+      MAILER_SENDER: "Nhost <noreply@nhost.io>"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth.rule=Host(`auth.localhost`)"
+      - "traefik.http.services.auth.loadbalancer.server.port=3000"
+    networks:
+      - nhost
+
+  graphql:
+    image: hasura/graphql-engine:v2.38.0
+    restart: always
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+      HASURA_GRAPHQL_JWT_SECRET: |
+        {
+          "type": "HS256",
+          "key": "${JWT_SECRET}"
+        }
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.graphql.rule=Host(`graphql.localhost`)"
+      - "traefik.http.services.graphql.loadbalancer.server.port=8080"
+    depends_on:
+      - postgres
+    networks:
+      - nhost
+
+  console:
+    image: nhost/console:latest
+    restart: always
+    environment:
+      HASURA_API_ENDPOINT: http://graphql.localhost
+      HASURA_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.console.rule=Host(`console.localhost`)"
+      - "traefik.http.services.console.loadbalancer.server.port=3000"
+    networks:
+      - nhost
+
+  dashboard:
+    image: nhost/dashboard:latest
+    restart: always
+    environment:
+      NHOST_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+      NHOST_BACKEND_URL: http://localhost
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`dashboard.localhost`)"
+      - "traefik.http.services.dashboard.loadbalancer.server.port=3000"
+    networks:
+      - nhost
+
+  functions:
+    image: nhost/functions:latest
+    restart: always
+    environment:
+      HASURA_GRAPHQL_ENDPOINT: http://graphql.localhost/v1/graphql
+      HASURA_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.functions.rule=Host(`functions.localhost`)"
+      - "traefik.http.services.functions.loadbalancer.server.port=3000"
+    volumes:
+      - ./functions:/app
+    networks:
+      - nhost
+
+networks:
+  nhost:
+    driver: bridge
